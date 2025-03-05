@@ -1,4 +1,3 @@
-# RTOS_application_for_wearable_device
 # Firmware Implementation for PPG and IMU Sensors Using FreeRTOS
 
 ## Overview
@@ -40,9 +39,6 @@ The system consists of multiple FreeRTOS threads responsible for handling sensor
 - Implement power optimization techniques
 - Add error handling and logging mechanisms
 - Enhance BLE communication with additional control commands
-
-## License
-This project is licensed under the MIT License. Feel free to modify and distribute.
 
 ## Contact
 For any queries, feel free to open an issue in this repository or reach out to the contributors.
