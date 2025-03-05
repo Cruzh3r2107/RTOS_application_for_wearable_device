@@ -30,7 +30,7 @@ The system consists of multiple FreeRTOS threads responsible for handling sensor
 ## Setup Instructions
 1. Clone the repository:
    ```sh
-   git clone [<repo-url>](https://github.com/Cruzh3r2107/RTOS_application_for_wearable_device)
+   git clone https://github.com/Cruzh3r2107/RTOS_application_for_wearable_device
    ```
 2. Build the project using your preferred embedded toolchain.
 3. Flash the firmware onto your embedded device.
