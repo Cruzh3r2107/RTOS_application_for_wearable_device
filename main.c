@@ -1,47 +1,77 @@
-#include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
+#include <zephyr.h>
+#include <drivers/i2c.h>
+#include <sys/printk.h>
 #include "sensor_data.h"
-#include "flash_storage.h"
+#include "flash.h"
 #include "ble_communication.h"
 
-// Watchdog timer for system monitoring
-void watchdog_task(void *pvParameters) {
-    while (1) {
-        // Check system health (e.g., task status, queue usage)
-        printf("Watchdog: System is healthy\n");
-        vTaskDelay(pdMS_TO_TICKS(5000)); // Check every 5 seconds
-    }
-}
+// Define task priorities and stack sizes
+#define STACK_SIZE 1024
+#define PRIORITY_BLE_TASK 3
+#define PRIORITY_FLASH_TASK 2
+#define PRIORITY_SENSOR_TASK 1
 
-void app_main() {
-    // Initialize queues and mutexes
-    QueueHandle_t sensor_data_queue = xQueueCreate(10, sizeof(session_t));
-    QueueHandle_t ble_command_queue = xQueueCreate(10, sizeof(uint8_t));
-    SemaphoreHandle_t flash_mutex = xSemaphoreCreateMutex();
+// Message queue for sensor data
+K_MSGQ_DEFINE(sensor_data_msgq, sizeof(struct sensor_session), 10, 4);
 
-    if (sensor_data_queue == NULL || ble_command_queue == NULL || flash_mutex == NULL) {
-        printf("Failed to create queues or mutex\n");
+// Thread objects
+static struct k_thread sensor_data_thread;
+static struct k_thread flash_data_thread;
+static struct k_thread ble_thread;
+
+// Thread IDs
+k_tid_t sensor_thread_id = NULL;
+k_tid_t flash_thread_id = NULL;
+static k_tid_t ble_thread_id = NULL;
+
+// Stack definitions
+K_THREAD_STACK_DEFINE(sensor_stack_area, STACK_SIZE);
+K_THREAD_STACK_DEFINE(flash_stack_area, STACK_SIZE);
+K_THREAD_STACK_DEFINE(ble_stack_area, STACK_SIZE);
+
+bool is_session_active = false;
+
+// Main function
+void main(void) {
+    printk("System Initializing...\n");
+
+    // Initialize Flash Storage
+    flash_init();
+
+    // Initialize BLE Services
+    int ble_status = ble_init();
+    if (ble_status != 0) {
+        printk("Bluetooth initialization failed!\n");
         return;
     }
 
-    // Create tasks for concurrent execution
-    xTaskCreate(sensor_task, "Sensor Task", 2048, (void *)sensor_data_queue, 2, NULL);
-    xTaskCreate(ble_task, "BLE Task", 2048, (void *)ble_command_queue, 1, NULL);
-    xTaskCreate(storage_task, "Storage Task", 2048, (void *)sensor_data_queue, 2, NULL);
-    xTaskCreate(watchdog_task, "Watchdog Task", 2048, NULL, 1, NULL); // System monitoring
-
-    // Simulate sending a BLE command to start a session
-    uint8_t start_command = 1;
-    if (xQueueSend(ble_command_queue, &start_command, portMAX_DELAY) != pdPASS) {
-        printf("Failed to send start command to BLE task\n");
+    // Initialize Sensor I2C communication (if needed)
+    i2c_dev = i2c_init();
+    if (!i2c_dev) {
+        printk("I2C initialization failed!\n");
+        return;
     }
 
-    // Main loop (optional, for debugging or additional functionality)
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Delay for 1 second
-        printf("Main loop running...\n");
-    }
+    // Start BLE thread
+    ble_thread_id = k_thread_create(&ble_thread, ble_stack_area, 
+                                    K_THREAD_STACK_SIZEOF(ble_stack_area),
+                                    ble_init, NULL, NULL, NULL, 
+                                    PRIORITY_BLE_TASK, 0, K_NO_WAIT);
+    printk("BLE thread started\n");
+
+    // Start Sensor Data Acquisition thread
+    sensor_thread_id = k_thread_create(&sensor_data_thread, sensor_stack_area, 
+                                       K_THREAD_STACK_SIZEOF(sensor_stack_area),
+                                       sensor_task, NULL, NULL, NULL, 
+                                       PRIORITY_SENSOR_TASK, 0, K_NO_WAIT);
+    printk("Sensor data thread started\n");
+
+    // Start Flash Storage thread
+    flash_thread_id = k_thread_create(&flash_data_thread, flash_stack_area, 
+                                      K_THREAD_STACK_SIZEOF(flash_stack_area),
+                                      flash_task, NULL, NULL, NULL, 
+                                      PRIORITY_FLASH_TASK, 0, K_NO_WAIT);
+    printk("Flash storage thread started\n");
+
+    printk("System Initialization Complete!\n");
 }

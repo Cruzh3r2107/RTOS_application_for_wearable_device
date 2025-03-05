@@ -1,33 +1,46 @@
-#include <stdio.h>
+#include "flash.h"
+#include <sys/printk.h>
 #include <string.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
-#include "flash_storage.h"
 
-// Simulate writing session data to flash
-void write_session_to_flash(session_t *session) {
-    printf("Flash Storage: Writing session %d to flash\n", session->session_id);
-    // Implement actual flash write logic here
-}
+// Mutex for flash memory access
+K_MUTEX_DEFINE(flash_mutex);
 
-// Task to handle flash storage
-void storage_task(void *pvParameters) {
-    QueueHandle_t sensor_data_queue = (QueueHandle_t)pvParameters;
-    SemaphoreHandle_t flash_mutex = (SemaphoreHandle_t)pvParameters;
-    session_t session;
+// Message queue for sensor data
+extern K_MSGQ_DEFINE(sensor_data_msgq, sizeof(struct sensor_session), 10, 4);
+
+// Flash device pointer
+static const struct device *flash_dev;
+
+// Flash task to store data
+void flash_task(void) {
+    struct sensor_session session;
+    size_t offset = FLASH_BASE_ADDRESS;
 
     while (1) {
-        if (xQueueReceive(sensor_data_queue, &session, portMAX_DELAY) == pdPASS) {
-            if (xSemaphoreTake(flash_mutex, portMAX_DELAY) == pdTRUE) {
-                write_session_to_flash(&session); // Write session data to flash
-                xSemaphoreGive(flash_mutex); // Release flash access
+        if (k_msgq_get(&sensor_data_msgq, &session, K_FOREVER) == 0) {
+            k_mutex_lock(&flash_mutex, K_FOREVER);
+
+            if (offset + sizeof(session) <= FLASH_AREA_SIZE) {
+                if (flash_write(flash_dev, offset, &session, sizeof(session)) != 0) {
+                    printk("Flash write failed\n");
+                }
+                offset += sizeof(session);
             } else {
-                printf("Storage Task: Failed to acquire flash mutex\n");
+                printk("Flash memory full. Stopping session.\n");
             }
-        } else {
-            printf("Storage Task: Failed to receive data from sensor task\n");
+
+            k_mutex_unlock(&flash_mutex);
         }
+    }
+}
+
+// Initialize Flash device
+void flash_init(void) {
+    flash_dev = device_get_binding(DT_LABEL(DT_NODELABEL(flash0)));
+
+    if (!flash_dev) {
+        printk("No Flash device found\n");
+    } else {
+        printk("Flash initialized\n");
     }
 }

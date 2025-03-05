@@ -1,15 +1,23 @@
 #ifndef FLASH_STORAGE_H
 #define FLASH_STORAGE_H
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
-#include "sensor_data.h"
+#include <zephyr.h>
+#include <drivers/flash.h>
 
-// Function prototypes for flash storage interaction
-void storage_task(void *pvParameters); // Main storage task
-void write_session_to_flash(session_t *session); // Write session data to flash
-void read_session_from_flash(uint32_t session_id, session_t *session); // Read session data from flash
+// Flash storage configuration
+#define FLASH_BASE_ADDRESS DT_FLASH_AREA_STORAGE_OFFSET
+#define FLASH_AREA_SIZE DT_FLASH_AREA_STORAGE_SIZE
+
+// Structure for sensor session data
+struct sensor_session {
+    uint32_t timestamp;
+    int16_t acc_x, acc_y, acc_z;
+    int16_t gyr_x, gyr_y, gyr_z;
+    uint32_t red, ir;
+};
+
+// Function declarations
+void flash_init(void);
+void flash_task(void);
 
 #endif // FLASH_STORAGE_H
