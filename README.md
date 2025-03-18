@@ -6,7 +6,7 @@ This project implements firmware using FreeRTOS to integrate PPG and IMU sensors
 ## System Architecture
 The system consists of multiple FreeRTOS threads responsible for handling sensor data acquisition, storage, and BLE communication. Below is the architecture diagram:
 
-![System Architecture](System_Arch.drawio.png)
+![System Architecture](systemarch.jpg)
 
 ## Features
 - **Sensor Integration:** Periodic sampling of PPG and IMU sensors
