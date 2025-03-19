@@ -3,46 +3,41 @@
 
 // External variables for session control and thread management
 extern bool session_active;
-extern k_tid_t sensor_task_id; //Thread ID for the sensor data acquisition task
-extern k_tid_t storage_task_id; //Thread ID for storage task
+extern struct k_thread sensor_thread;
+extern struct k_thread storage_thread;
+extern struct k_msgq sensor_data_msgq; // Message queue for sensor data
 
-// Connection callback functions
+// BLE Connection callback functions
 static void handle_ble_connect(struct bt_conn *connection, uint8_t error) {
-    if (error) 
-    {
+    if (error) {
         printk("BLE Connection failed (Error Code: %u)\n", error);
         return;
     }
     printk("BLE Device Connected Successfully\n");
 }
-// called when bluetooth device disconnects
-static void handle_ble_disconnect(struct bt_conn *connection, uint8_t reason) 
-{
+
+// Called when Bluetooth device disconnects
+static void handle_ble_disconnect(struct bt_conn *connection, uint8_t reason) {
     printk("BLE Disconnected (Reason Code: %u)\n", reason);
 
-    if (session_active) 
-    {
+    if (session_active) {
         session_active = false;
 
         // Stop sensor data acquisition
-        if (sensor_task_id) 
-        {
-            k_thread_abort(sensor_task_id);// abort thread reading sensor data
-            sensor_task_id = NULL;
+        if (sensor_thread.thread_state) {
+            k_thread_suspend(&sensor_thread);
             printk("Sensor data collection stopped due to BLE disconnection\n");
         }
 
         // Stop storage operations
-        if (storage_task_id) 
-        {
-            k_thread_abort(storage_task_id); //abort thread storing data
-            storage_task_id = NULL;
+        if (storage_thread.thread_state) {
+            k_thread_suspend(&storage_thread);
             printk("Data storage halted due to BLE disconnection\n");
         }
     }
 }
 
-// Defines a structure to register the connection and disconnection callbacks
+// Structure to register BLE connection callbacks
 static struct bt_conn_cb ble_conn_callbacks = {
     .connected = handle_ble_connect,
     .disconnected = handle_ble_disconnect,
@@ -53,12 +48,30 @@ void ble_initialize(void) {
     int err = bt_enable(NULL);
     if (err) {
         printk("BLE Initialization failed (Error Code: %d)\n", err);
-    } else {
-        printk("BLE Stack Initialized\n");
+        return;
     }
+    printk("BLE Stack Initialized\n");
 }
 
 // Function to register connection callbacks
 void ble_register_callbacks(void) {
     bt_conn_cb_register(&ble_conn_callbacks);
+}
+
+// Function to send sensor data over BLE
+void ble_send_data(const void *data, size_t len) {
+    if (!session_active) {
+        printk("BLE session not active, cannot send data.\n");
+        return;
+    }
+
+    struct sensor_session session;
+    while (k_msgq_get(&sensor_data_msgq, &session, K_NO_WAIT) == 0) {
+        int err = bt_gatt_notify(NULL, DATA_TRANSFER_UUID, &session, sizeof(session));
+        if (err) {
+            printk("Failed to send BLE data (Error Code: %d)\n", err);
+        } else {
+            printk("BLE Data sent successfully\n");
+        }
+    }
 }
