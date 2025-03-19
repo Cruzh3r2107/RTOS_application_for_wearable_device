@@ -6,7 +6,7 @@ This project implements firmware using zephyr RTOS to integrate PPG and IMU sens
 ## System Architecture
 The system consists of multiple zephyr RTOS threads responsible for handling sensor data acquisition, storage, and BLE communication. Below is the architecture diagram:
 
-![System Architecture](systemarch.jpg)
+![System Architecture](system_arch.jpg)
 
 ## Features
 - **Sensor Integration:** Periodic sampling of PPG and IMU sensors
