@@ -17,13 +17,35 @@ void flash_erase(void) {
     k_mutex_lock(&flash_mutex, K_FOREVER);
 
     printk("Erasing flash memory...\n");
-    if (flash_erase(flash_dev, FLASH_BASE_ADDRESS, FLASH_AREA_SIZE) != 0) {
-        printk("Flash erase failed!\n");
+    int err = flash_erase(flash_dev, FLASH_BASE_ADDRESS, FLASH_AREA_SIZE);
+    if (err != 0) {
+        printk("Flash erase failed! Error: %d\n", err);
     } else {
         printk("Flash memory erased successfully.\n");
     }
 
     k_mutex_unlock(&flash_mutex);
+}
+
+// Function to read sensor data from flash
+int flash_read_sensor_data(uint32_t offset, struct sensor_session *session) {
+    if (!flash_dev) {
+        printk("Flash device not initialized!\n");
+        return -1;
+    }
+
+    k_mutex_lock(&flash_mutex, K_FOREVER);
+
+    int err = flash_read(flash_dev, offset, session, sizeof(struct sensor_session));
+    if (err != 0) {
+        printk("Flash read failed (Error: %d)\n", err);
+        k_mutex_unlock(&flash_mutex);
+        return -1;
+    }
+
+    k_mutex_unlock(&flash_mutex);
+    printk("Flash data read successfully from offset 0x%08X\n", offset);
+    return 0;
 }
 
 // Flash task to store data
@@ -35,14 +57,14 @@ void flash_task(void) {
         if (k_msgq_get(&sensor_data_msgq, &session, K_FOREVER) == 0) {
             k_mutex_lock(&flash_mutex, K_FOREVER);
 
-            // Check if there's enough space in flash
+            // Ensure flash has space before writing
             if (offset + sizeof(session) <= FLASH_BASE_ADDRESS + FLASH_AREA_SIZE) {
                 // Disable write protection before writing
                 flash_write_protection_set(flash_dev, false);
 
-                // Write sensor data to flash
-                if (flash_write(flash_dev, offset, &session, sizeof(session)) != 0) {
-                    printk("Flash write failed at offset 0x%08X\n", offset);
+                int err = flash_write(flash_dev, offset, &session, sizeof(session));
+                if (err != 0) {
+                    printk("Flash write failed at offset 0x%08X (Error: %d)\n", offset, err);
                 } else {
                     printk("Data written to flash at offset 0x%08X\n", offset);
                     offset += sizeof(session);
@@ -63,12 +85,11 @@ void flash_task(void) {
 
 // Initialize Flash device
 void flash_init(void) {
-    // Retrieve the flash device
     flash_dev = device_get_binding(DT_LABEL(DT_NODELABEL(flash0)));
 
     if (!flash_dev) {
-        printk("No Flash device found\n");
+        printk("No Flash device found! Check your device tree configuration.\n");
     } else {
-        printk("Flash initialized\n");
+        printk("Flash initialized successfully.\n");
     }
 }
