@@ -1,4 +1,4 @@
-# Firmware Implementation for PPG and IMU Sensors Using FreeRTOS
+# Firmware Implementation for PPG and IMU Sensors Using zephyr RTOS
 
 ## Overview
 This project implements firmware using zephyr RTOS to integrate PPG and IMU sensors. The firmware is designed to periodically sample data, store session-based data in flash storage, and communicate with a mobile phone via BLE.
