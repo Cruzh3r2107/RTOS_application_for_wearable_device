@@ -12,7 +12,7 @@ The system consists of multiple zephyr RTOS threads responsible for handling sen
 - **Sensor Integration:** Periodic sampling of PPG and IMU sensors
 - **Data Storage:** Session-based data saving in flash storage
 - **BLE Communication:** Transfer of stored data and session control via Bluetooth
-- **Task Management:** Organized FreeRTOS tasks for efficient system operation
+- **Task Management:** Organized zephyr RTOS tasks for efficient system operation
 
 ## Repository Structure
 ```
