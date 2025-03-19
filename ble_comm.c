@@ -1,10 +1,13 @@
 #include "ble_comm.h"
+#include "flash_storage.h"
 #include <sys/printk.h>
+#include <zephyr/kernel.h>
+#include <bluetooth/gatt.h>
 
 // External variables for session control and thread management
 extern bool session_active;
 extern struct k_thread sensor_thread;
-extern struct k_thread storage_thread;
+extern struct k_thread flash_data_thread;
 extern struct k_msgq sensor_data_msgq; // Message queue for sensor data
 
 // BLE Connection callback functions
@@ -14,6 +17,8 @@ static void handle_ble_connect(struct bt_conn *connection, uint8_t error) {
         return;
     }
     printk("BLE Device Connected Successfully\n");
+
+    session_active = true;
 }
 
 // Called when Bluetooth device disconnects
@@ -24,16 +29,12 @@ static void handle_ble_disconnect(struct bt_conn *connection, uint8_t reason) {
         session_active = false;
 
         // Stop sensor data acquisition
-        if (sensor_thread.thread_state) {
-            k_thread_suspend(&sensor_thread);
-            printk("Sensor data collection stopped due to BLE disconnection\n");
-        }
+        k_thread_suspend(&sensor_thread);
+        printk("Sensor data collection suspended due to BLE disconnection\n");
 
-        // Stop storage operations
-        if (storage_thread.thread_state) {
-            k_thread_suspend(&storage_thread);
-            printk("Data storage halted due to BLE disconnection\n");
-        }
+        // Stop flash storage operations
+        k_thread_suspend(&flash_data_thread);
+        printk("Data storage halted due to BLE disconnection\n");
     }
 }
 
@@ -51,27 +52,39 @@ void ble_initialize(void) {
         return;
     }
     printk("BLE Stack Initialized\n");
-}
 
-// Function to register connection callbacks
-void ble_register_callbacks(void) {
+    // Register BLE callbacks
     bt_conn_cb_register(&ble_conn_callbacks);
 }
 
 // Function to send sensor data over BLE
-void ble_send_data(const void *data, size_t len) {
+void ble_send_data(void) {
     if (!session_active) {
         printk("BLE session not active, cannot send data.\n");
         return;
     }
 
     struct sensor_session session;
+    uint32_t flash_offset = FLASH_BASE_ADDRESS;
+
+    // First, try sending live data from the queue
     while (k_msgq_get(&sensor_data_msgq, &session, K_NO_WAIT) == 0) {
         int err = bt_gatt_notify(NULL, DATA_TRANSFER_UUID, &session, sizeof(session));
         if (err) {
-            printk("Failed to send BLE data (Error Code: %d)\n", err);
+            printk("Failed to send live BLE data (Error Code: %d)\n", err);
         } else {
-            printk("BLE Data sent successfully\n");
+            printk("Live BLE Data sent successfully\n");
         }
+    }
+
+    // If no live data, try reading from flash
+    while (flash_read_sensor_data(flash_offset, &session) == 0) {
+        int err = bt_gatt_notify(NULL, DATA_TRANSFER_UUID, &session, sizeof(session));
+        if (err) {
+            printk("Failed to send stored BLE data (Error Code: %d)\n", err);
+        } else {
+            printk("Stored BLE Data sent successfully from flash offset 0x%08X\n", flash_offset);
+        }
+        flash_offset += sizeof(session);
     }
 }
